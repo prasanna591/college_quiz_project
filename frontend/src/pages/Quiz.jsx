@@ -121,6 +121,9 @@ const Quiz = () => {
       return;
     }
 
+    // Log answers before submission
+    console.log("Answers before submission:", answers);
+
     // Convert answers object to use string keys to match server expectations
     const formattedAnswers = {};
     for (const [questionId, answer] of Object.entries(answers)) {
@@ -153,6 +156,8 @@ const Quiz = () => {
         },
         { headers }
       );
+
+      // Rest of the function remains the same...
 
       if (res.data.status === "success") {
         setSubmitted(true);

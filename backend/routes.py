@@ -203,7 +203,7 @@ def get_questions(student_id):
         return jsonify({"message": "Error fetching questions", "status": "error", "error": str(e)}), 500
 
 @student_bp.route("/submit_quiz", methods=["POST"])
-@cross_origin()
+@cross_origin()  
 @token_required
 def submit_quiz(student_id):
     try:
@@ -216,15 +216,9 @@ def submit_quiz(student_id):
         answers = data.get("answers", {})
         time_taken = data.get("time_taken", 0)
 
-        logger.info(f"Quiz submission from student {student_id} for quiz {quiz_id}")
-
-        if not quiz_id:
-            logger.warning("Invalid quiz submission: Missing quiz_id")
-            return jsonify({"message": "Quiz ID is required", "status": "error"}), 400
-
-        if not isinstance(answers, dict) or not answers:
-            logger.warning("Invalid quiz submission: Missing or invalid answers")
-            return jsonify({"message": "Answers must be provided as a dictionary", "status": "error"}), 400
+        if not quiz_id or not answers:
+            logger.warning("Invalid quiz submission: Missing quiz_id or answers")
+            return jsonify({"message": "Invalid request format", "status": "error"}), 400
 
         quiz = Quiz.query.get(quiz_id)
         if not quiz:
@@ -234,33 +228,49 @@ def submit_quiz(student_id):
         questions = QuizQuestion.query.filter_by(quiz_id=quiz_id).all()
         if not questions:
             logger.warning(f"No questions found for quiz: {quiz_id}")
-            return jsonify({"message": "Quiz has no questions", "status": "error"}), 404
+            return jsonify({"message": "Quiz not found", "status": "error"}), 404
 
-        question_ids = {str(q.id) for q in questions}
-        if set(answers.keys()) != question_ids:
-            missing_questions = list(question_ids - set(answers.keys()))
-            extra_questions = list(set(answers.keys()) - question_ids)
-            return jsonify({"message": "All questions must be answered", "status": "error", "missing_questions": missing_questions, "extra_questions": extra_questions}), 400
-
+        # Log answers for debugging
+        logger.info(f"Received answers: {answers}")
+        
         score = 0
         for question in questions:
-            q_id_str = str(question.id)
-            submitted_answer = int(answers.get(q_id_str, -1))
-            if submitted_answer == question.correct_answer:
-                score += 1
+            question_id_str = str(question.id)
+            if question_id_str in answers:
+                selected_answer = int(answers[question_id_str])
+                # Convert question.correct_answer to int before comparison
+                correct_answer = int(question.correct_answer)
+                logger.info(f"Question {question_id_str}: Selected {selected_answer}, Correct {correct_answer}")
+                if selected_answer == correct_answer:
+                    score += 1
 
-        quiz_attempt = QuizAttempt(student_id=student_id, quiz_id=quiz_id, score=score, time_taken=time_taken)
+        quiz_attempt = QuizAttempt(
+            student_id=student_id, 
+            quiz_id=quiz_id, 
+            score=score, 
+            time_taken=time_taken
+        )
         db.session.add(quiz_attempt)
         db.session.commit()
 
-        logger.info(f"Quiz submitted by student {student_id}: Quiz ID {quiz_id}, Score {score}/{len(questions)}")
-        return jsonify({"message": "Quiz submitted successfully!", "status": "success", "quiz_id": quiz_id, "score": score, "total_questions": len(questions)}), 201
+        logger.info(f"Quiz submitted by student {student_id}: Quiz ID {quiz_id}, Score {score}")
+
+        return jsonify({
+            "message": "Quiz submitted successfully!", 
+            "status": "success", 
+            "quiz_id": quiz_id, 
+            "score": score
+        }), 201
 
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error submitting quiz: {str(e)}")
-        return jsonify({"message": "Error submitting quiz", "status": "error", "error": str(e)}), 500
-
+        return jsonify({
+            "message": "Error submitting quiz", 
+            "status": "error", 
+            "error": str(e)
+        }), 500
+    
 @student_bp.errorhandler(404)
 def not_found(error):
     return jsonify({"message": "Resource not found", "status": "error"}), 404
