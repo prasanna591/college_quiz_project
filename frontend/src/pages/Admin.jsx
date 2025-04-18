@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import "./Admin.css";
+import QuizResults from "./QuizResults.jsx"; // Import the new component
 
 const Admin = () => {
   const [file, setFile] = useState(null);
@@ -10,6 +11,7 @@ const Admin = () => {
   const [loadingQuiz, setLoadingQuiz] = useState(false);
   const [quizResults, setQuizResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
+  const [loadingResults, setLoadingResults] = useState(false);
   const token = localStorage.getItem("adminToken");
 
   // Fix: Use import.meta.env instead of process.env for Vite
@@ -65,6 +67,7 @@ const Admin = () => {
     async (quizId) => {
       if (!token) return;
 
+      setLoadingResults(true);
       try {
         const res = await axios.get(
           `${API_BASE_URL}/admin/quiz_results/${quizId}`,
@@ -93,6 +96,8 @@ const Admin = () => {
             true
           );
         }
+      } finally {
+        setLoadingResults(false);
       }
     },
     [token, API_BASE_URL]
@@ -218,7 +223,11 @@ const Admin = () => {
 
       displayMessage(`✅ ${res.data.message}`);
       await fetchActiveQuiz();
-      await fetchQuizResults(activeQuiz.quiz_id);
+
+      // Fetch results after stopping quiz
+      if (activeQuiz) {
+        await fetchQuizResults(activeQuiz.quiz_id);
+      }
     } catch (error) {
       console.error("Error stopping quiz:", error);
       if (error.response?.status === 401) {
@@ -234,6 +243,16 @@ const Admin = () => {
         );
       }
     }
+  };
+
+  // New function to view results for current or previous quiz
+  const handleViewResults = async () => {
+    if (!activeQuiz) {
+      displayMessage("⚠️ No quiz selected to view results.", true);
+      return;
+    }
+
+    await fetchQuizResults(activeQuiz.quiz_id);
   };
 
   return (
@@ -280,37 +299,42 @@ const Admin = () => {
         <button
           onClick={handleStartQuiz}
           disabled={uploading || (!file && !activeQuiz)}
+          className="btn btn-start"
         >
           Start Quiz
         </button>
-        <button onClick={handleStopQuiz} disabled={!activeQuiz}>
+        <button
+          onClick={handleStopQuiz}
+          disabled={!activeQuiz}
+          className="btn btn-stop"
+        >
           Stop Quiz
+        </button>
+        <button
+          onClick={handleViewResults}
+          disabled={!activeQuiz}
+          className="btn btn-view"
+        >
+          View Results
         </button>
       </div>
 
+      {loadingResults && (
+        <div className="loading-spinner">
+          <p>Loading results...</p>
+        </div>
+      )}
+
       {showResults && quizResults.length > 0 && (
-        <div className="quiz-results">
-          <h3>📊 Quiz Results</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Class</th>
-                <th>Department</th>
-                <th>Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {quizResults.map((result, index) => (
-                <tr key={index}>
-                  <td>{result.name}</td>
-                  <td>{result.class_name}</td>
-                  <td>{result.department}</td>
-                  <td>{result.score}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <QuizResults
+          results={quizResults}
+          quizTitle={activeQuiz ? activeQuiz.title : "Quiz Results"}
+        />
+      )}
+
+      {showResults && quizResults.length === 0 && (
+        <div className="no-results">
+          <p>No results available for this quiz yet.</p>
         </div>
       )}
     </div>
